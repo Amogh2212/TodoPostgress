@@ -5,6 +5,7 @@ from . import schemas, crud, models
 from google import genai
 import os
 from dotenv import load_dotenv
+from fastapi.responses import RedirectResponse
 
 load_dotenv()
 gemini_client = genai.Client(
@@ -18,8 +19,8 @@ app = FastAPI()
 
 @app.get("/")
 def root():
-    return {"message": "ToDo API is running!"}
-
+    return RedirectResponse(url="/docs")
+    
 @app.post("/todos", response_model=schemas.Todo)
 def create(todo: schemas.TodoCreate, db: Session = Depends(get_db)):
     return crud.create_todo(db, todo)
