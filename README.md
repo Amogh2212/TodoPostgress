@@ -1,0 +1,1 @@
+This is a backend-only To-Do List application using FastAPI, implementing complete CRUD (Create, Read, Update, Delete) operations for efficient task management. The backend is enhanced with Gemini API integration to provide intelligent task prioritization and automated daily summaries.
