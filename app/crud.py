@@ -1,9 +1,6 @@
 from sqlalchemy.orm import Session
 from . import models, schemas
-<<<<<<< HEAD
 from datetime import datetime, timezone
-=======
->>>>>>> dfd5a49fb15b43d667bf82569aa7f651b770411b
 
 def get_todos(db: Session):
     return db.query(models.Todo).all()
@@ -18,7 +15,6 @@ def create_todo(db: Session, todo: schemas.TodoCreate):
     db.refresh(db_todo)
     return db_todo
 
-<<<<<<< HEAD
 def update_todo(db: Session, todo_id: int, todo_update: schemas.TodoCreate):
     # 1. Find the existing task
     db_todo = db.query(models.Todo).filter(models.Todo.id == todo_id).first()
@@ -42,13 +38,6 @@ def update_todo(db: Session, todo_id: int, todo_update: schemas.TodoCreate):
         if hasattr(todo_update, 'completed'):
             db_todo.completed = todo_update.completed
 
-=======
-def update_todo(db: Session, todo_id: int, todo: schemas.TodoCreate):
-    db_todo = get_todo(db, todo_id)
-    if db_todo:
-        for key, value in todo.dict().items():
-            setattr(db_todo, key, value)
->>>>>>> dfd5a49fb15b43d667bf82569aa7f651b770411b
         db.commit()
         db.refresh(db_todo)
     return db_todo
