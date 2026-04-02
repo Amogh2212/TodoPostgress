@@ -32,11 +32,10 @@ app = FastAPI(title="Pro AI Agent OS")
 def get_embedding(text: str):
     """
     Turns text into a 768-dimension vector.
-    Uses a different syntax to force the new SDK to find the model.
+    Fixes the 404 by using the stable string name.
     """
     try:
-        # Use 'text-embedding-004' directly. 
-        # If this still 404s, 'embedding-001' is the fallback.
+        # Trying the most basic name first
         result = gemini_client.models.embed_content(
             model="text-embedding-004", 
             contents=text
@@ -44,18 +43,16 @@ def get_embedding(text: str):
         return result.embeddings[0].values
     except Exception as e:
         print(f"⚠️ Embedding API Error: {e}")
-        # Try fallback to oldest stable model if the new one isn't in your region yet
+        # Try one last fallback to the original model
         try:
             result = gemini_client.models.embed_content(model="embedding-001", contents=text)
             return result.embeddings[0].values
         except:
             return [0.0] * 768
 
-def sync_to_notion(title: str, urgency: str, description: str = ""):
-    """Mirrors the task to Notion board."""
+def sync_to_notion(title: str, urgency: str, category: str, description: str = ""):
+    """Mirrors the task to Notion. Fixes the multi_select error."""
     url = "https://api.notion.com/v1/pages"
-    
-    # Ensure NOTION_TOKEN is exactly as it appears in .env (ntn_...)
     headers = {
         "Authorization": f"Bearer {NOTION_TOKEN}",
         "Content-Type": "application/json",
@@ -64,12 +61,17 @@ def sync_to_notion(title: str, urgency: str, description: str = ""):
     
     priority_map = {"very important": "High", "important": "Medium", "can do later": "Low"}
     notion_priority = priority_map.get(urgency.lower(), "Medium")
+    notion_category = category.title() if category else "General"
 
+    # FIX: We change 'select' to 'multi_select' and put the category in a list []
     data = {
         "parent": { "database_id": NOTION_DB_ID },
         "properties": {
             "Task name": { "title": [{"text": {"content": title}}] },
             "Priority": { "select": {"name": notion_priority} },
+            "Task type": { 
+                "multi_select": [{"name": notion_category}] 
+            },
             "Description": { "rich_text": [{"text": {"content": description or ""}}] },
             "Status": { "status": {"name": "Not started"} }
         }
@@ -78,9 +80,8 @@ def sync_to_notion(title: str, urgency: str, description: str = ""):
     try:
         response = requests.post(url, headers=headers, json=data)
         if response.status_code == 200:
-            print("✅ Successfully synced to Notion!")
+            print(f"✅ Synced to Notion! Category: {notion_category}")
         else:
-            # This will help us see if it's still a 401 or a different error
             print(f"❌ Notion API Error: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"❌ Notion Connection Error: {e}")
@@ -102,7 +103,7 @@ def create(todo: schemas.TodoCreate, db: Session = Depends(get_db)):
     # 3. Sync to Notion
     if NOTION_TOKEN and NOTION_DB_ID:
         try:
-            sync_to_notion(todo.title, todo.urgency, todo.description)
+            sync_to_notion(todo.title, todo.urgency, db_todo.category, todo.description)
         except Exception as e:
             print(f"Notion Sync Error: {e}")
             

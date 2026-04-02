@@ -15,3 +15,4 @@ class Todo(Base):
     # Add these two:
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    category = Column(String, default="General")

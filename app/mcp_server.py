@@ -8,9 +8,9 @@ mcp = FastMCP("Todo_Manager")
 API_URL = "http://127.0.0.1:8000/todos"
 
 @mcp.tool()
-def add_todo(title: str, description: str = "", urgency: str = "important"):
+def add_todo(title: str, description: str = "", urgency: str = "important", category: str = "Work"):
     """Adds a task to the todo list. Urgency: very important, important, or can do later."""
-    payload = {"title": title, "description": description, "urgency": urgency}
+    payload = {"title": title, "description": description, "urgency": urgency, "category": category}
     try:
         response = requests.post(API_URL, json=payload)
         if response.status_code != 200:
