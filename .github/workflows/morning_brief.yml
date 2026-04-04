@@ -1,12 +1,12 @@
 name: Daily Morning Brief
 on:
   schedule:
-    # This runs at 9:00 AM IST (3:30 AM UTC) every day
-    - cron: '30 3 * * *' 
-  workflow_dispatch: # Allows you to trigger it manually
+    # Runs at 9:00 AM IST (3:30 AM UTC) every day
+    - cron: '30 3 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
 jobs:
-  build:
+  morning-brief:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -18,15 +18,17 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install requests google-genai python-dotenv
+        run: pip install -r requirements.txt
 
-      - name: Run script
+      - name: Run Morning Brief
         env:
-          # This pulls the keys from your GitHub Secrets
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Required
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Optional — AI summary (falls back to plain text if missing)
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # Optional — Telegram delivery (prints to logs if missing)
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
-        run: python app/morning_brief.py
+          # Optional — your name in the message
+          USER_NAME: ${{ secrets.USER_NAME }}
+        run: python -m app.morning_brief

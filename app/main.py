@@ -7,35 +7,56 @@ from sqlalchemy.orm import Session
 from .database import Base, engine, get_db
 from . import schemas, crud, models
 from google import genai
-from pgvector.sqlalchemy import Vector
 from dotenv import load_dotenv
-from apscheduler.schedulers.background import BackgroundScheduler
 
 load_dotenv()
 
 # --- CONFIG ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-NOTION_TOKEN = os.getenv("NOTION_TOKEN")
-NOTION_DB_ID = os.getenv("NOTION_DATABASE_ID")
 
-# Initialize the NEW Gemini Client
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+# Initialize the Gemini Client
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    print("⚠️  WARNING: GEMINI_API_KEY not set. Embedding & AI features will be disabled.")
+    gemini_client = None
+else:
+    gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+
+# --- STARTUP VALIDATION ---
+print("\n🔧 Service Configuration Status:")
+print(f"   📦 Database:  {'✅ Connected' if os.getenv('DATABASE_URL') else '❌ DATABASE_URL not set!'}")
+print(f"   🤖 Gemini:    {'✅ Ready' if GEMINI_API_KEY else '⚠️  Disabled — semantic search will not work'}")
+print(f"   📱 Telegram:  {'✅ Ready' if TELEGRAM_TOKEN and CHAT_ID else '⚪ Disabled (set TELEGRAM_TOKEN + CHAT_ID)'}")
+print()
 
 # Initialize Database Tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Pro AI Agent OS")
+app = FastAPI(
+    title="Pro AI Agent OS",
+    description="A smart To-Do API with Gemini AI, Telegram notifications, and semantic search.",
+    version="1.0.0",
+)
 
 # --- HELPER FUNCTIONS ---
 
-def get_embedding(text: str):
-    """
-    Turns text into a 768-dimension vector.
-    Fixes the 404 by using the stable string name.
-    """
+def send_telegram_msg(text: str):
+    """Sends a message to the configured Telegram chat."""
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        print("⚠️ Telegram not configured. Skipping message.")
+        return
     try:
-        # Trying the most basic name first
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        requests.post(url, json={"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"})
+    except Exception as e:
+        print(f"❌ Telegram Error: {e}")
+
+def get_embedding(text: str):
+    """Turns text into a 768-dimension vector using Gemini."""
+    if not gemini_client:
+        return [0.0] * 768
+    try:
         result = gemini_client.models.embed_content(
             model="text-embedding-004", 
             contents=text
@@ -43,75 +64,37 @@ def get_embedding(text: str):
         return result.embeddings[0].values
     except Exception as e:
         print(f"⚠️ Embedding API Error: {e}")
-        # Try one last fallback to the original model
         try:
             result = gemini_client.models.embed_content(model="embedding-001", contents=text)
             return result.embeddings[0].values
         except:
             return [0.0] * 768
 
-def sync_to_notion(title: str, urgency: str, category: str, description: str = ""):
-    """Mirrors the task to Notion. Fixes the multi_select error."""
-    url = "https://api.notion.com/v1/pages"
-    headers = {
-        "Authorization": f"Bearer {NOTION_TOKEN}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28"
-    }
-    
-    priority_map = {"very important": "High", "important": "Medium", "can do later": "Low"}
-    notion_priority = priority_map.get(urgency.lower(), "Medium")
-    notion_category = category.title() if category else "General"
-
-    # FIX: We change 'select' to 'multi_select' and put the category in a list []
-    data = {
-        "parent": { "database_id": NOTION_DB_ID },
-        "properties": {
-            "Task name": { "title": [{"text": {"content": title}}] },
-            "Priority": { "select": {"name": notion_priority} },
-            "Task type": { 
-                "multi_select": [{"name": notion_category}] 
-            },
-            "Description": { "rich_text": [{"text": {"content": description or ""}}] },
-            "Status": { "status": {"name": "Not started"} }
-        }
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        if response.status_code == 200:
-            print(f"✅ Synced to Notion! Category: {notion_category}")
-        else:
-            print(f"❌ Notion API Error: {response.status_code} - {response.text}")
-    except Exception as e:
-        print(f"❌ Notion Connection Error: {e}")
-
 # --- ROUTES ---
+
 
 @app.post("/todos", response_model=schemas.Todo)
 def create(todo: schemas.TodoCreate, db: Session = Depends(get_db)):
-    # 1. Generate Vector Meaning
+    # 1. Generate semantic embedding
     vector = get_embedding(todo.title)
-    
+
     # 2. Save to Postgres
-    todo_data = todo.model_dump() if hasattr(todo, "model_dump") else todo.dict()
+    todo_data = todo.model_dump()
     db_todo = models.Todo(**todo_data, embedding=vector)
     db.add(db_todo)
     db.commit()
     db.refresh(db_todo)
-    
-    # 3. Sync to Notion
-    if NOTION_TOKEN and NOTION_DB_ID:
-        try:
-            sync_to_notion(todo.title, todo.urgency, db_todo.category, todo.description)
-        except Exception as e:
-            print(f"Notion Sync Error: {e}")
-            
+
     return db_todo
 
 @app.get("/todos/search")
 def search_tasks(query: str, db: Session = Depends(get_db)):
-    """RAG Semantic Search."""
+    """Semantic search — finds tasks by meaning using vector similarity."""
+    if not gemini_client:
+        raise HTTPException(
+            status_code=503,
+            detail="Semantic search is unavailable: GEMINI_API_KEY is not configured."
+        )
     query_vector = get_embedding(query)
     results = db.query(models.Todo).order_by(
         models.Todo.embedding.cosine_distance(query_vector)

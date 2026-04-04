@@ -8,35 +8,22 @@ def get_todos(db: Session):
 def get_todo(db: Session, todo_id: int):
     return db.query(models.Todo).filter(models.Todo.id == todo_id).first()
 
-def create_todo(db: Session, todo: schemas.TodoCreate):
-    db_todo = models.Todo(**todo.dict())
-    db.add(db_todo)
-    db.commit()
-    db.refresh(db_todo)
-    return db_todo
-
 def update_todo(db: Session, todo_id: int, todo_update: schemas.TodoCreate):
-    # 1. Find the existing task
     db_todo = db.query(models.Todo).filter(models.Todo.id == todo_id).first()
-    
+
     if db_todo:
-        # 2. Logic for completion timestamp
-        # If the task is being marked as 'completed' for the first time
-        if hasattr(todo_update, 'completed') and todo_update.completed == True:
-            if not db_todo.completed:
-                db_todo.completed_at = datetime.now(timezone.utc)
-        
-        # If the task is being marked as 'incomplete' again, clear the time
-        elif hasattr(todo_update, 'completed') and todo_update.completed == False:
+        # Track completion timestamp
+        if todo_update.completed and not db_todo.completed:
+            db_todo.completed_at = datetime.now(timezone.utc)
+        elif not todo_update.completed:
             db_todo.completed_at = None
 
-        # 3. Update the other fields
+        # Update all fields
         db_todo.title = todo_update.title
         db_todo.description = todo_update.description
         db_todo.urgency = todo_update.urgency
-        # If your schema has 'completed', update it here too
-        if hasattr(todo_update, 'completed'):
-            db_todo.completed = todo_update.completed
+        db_todo.category = todo_update.category
+        db_todo.completed = todo_update.completed
 
         db.commit()
         db.refresh(db_todo)
