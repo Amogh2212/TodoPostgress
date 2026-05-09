@@ -10,7 +10,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
     print("\n❌ FATAL: DATABASE_URL environment variable is not set!")
-    print("   Please copy .env.example to .env and fill in your database URL.")
+    print("   Please copy .env.example to .env and fi in your database URL.")
     print("   Example: DATABASE_URL=postgresql://user:pass@host/dbname?sslmode=require")
     sys.exit(1)
 
